@@ -1,0 +1,13 @@
+.{
+    .name = .zcat,
+    .version = "0.1.0",
+    .fingerprint = 0x44d9055ecc58d591, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.17.1",
+    .dependencies = .{
+        .ztreesitter = .{
+            .url = "git+https://github.com/pedronaugusto/ztreesitter#6c1d940007c77f11d8f4775ca2fc558b404b84d9",
+            .hash = "ztreesitter-0.1.0-0qqdWD7FGABT0f6e4tQYkraK_yZQcNeFPn_Ux3xKodO1",
+        },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "tests", "LICENSE", "README.md", "VERIFICATION.md", "THIRD_PARTY.md", "licenses", ".zigversion" },
+}

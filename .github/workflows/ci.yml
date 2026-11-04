@@ -1,0 +1,37 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        optimize: [Debug, ReleaseSafe, ReleaseFast]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install pinned Zig
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(cat .zigversion)
+          curl --fail --location --retry 3 "https://ziglang.org/download/$version/zig-x86_64-linux-$version.tar.xz" -o zig.tar.xz
+          echo '3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a  zig.tar.xz' | sha256sum --check
+          tar -xf zig.tar.xz
+          echo "$PWD/zig-x86_64-linux-$version" >> "$GITHUB_PATH"
+      - name: Check formatting
+        run: zig fmt --check build.zig build.zig.zon src
+      - name: Build and test
+        run: zig build test integration -Doptimize=${{ matrix.optimize }} -j2 --summary all
+      - name: Install executable and smoke test
+        run: |
+          zig build -Doptimize=${{ matrix.optimize }} -j2
+          ./zig-out/bin/zcat --version
+          printf 'hello\n' | ./zig-out/bin/zcat --plain
+      - name: Cross-compile Linux ARM64
+        if: matrix.optimize == 'ReleaseSafe'
+        run: zig build -Dtarget=aarch64-linux-musl -Doptimize=ReleaseSafe -j2
