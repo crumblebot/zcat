@@ -57,12 +57,84 @@ def terminal(*args, data=b"", env=ENV):
 class Cli(unittest.TestCase):
     def test_help_version_errors(self):
         self.assertIn(b"Usage:", run("--help").stdout)
-        self.assertEqual(run("--version").stdout, b"zcat 0.1.0\n")
+        self.assertEqual(run("--version").stdout, b"zcat 0.1.1\n")
         self.assertIn(b"typescript", run("--list-languages").stdout)
         for args in [("--bogus",), ("--color=bogus",), ("-l",),
                      ("-l", "unknown"), ("--width", "19"),
                      ("--plain", "-m"), ("--plain", "-n")]:
             self.assertEqual(run(*args).returncode, 2, args)
+
+    def test_markdown_table_regression(self):
+        source = b"| Path | Contents |\n| --- | --- |\n| apps/server/src/ | Server code |\n| apps/web/ | Web client |\n"
+        result = run("-m", "--color=never", "--width", "60", data=source)
+        self.assertEqual(result.returncode, 0)
+        lines = result.stdout.decode().splitlines()
+        self.assertTrue(any("Path" in line and "Contents" in line and "│" in line for line in lines), lines)
+        self.assertTrue(any("apps/server/src/" in line and "Server code" in line for line in lines), lines)
+        self.assertNotIn("---", result.stdout.decode())
+        self.assertTrue(all(len(line) <= 60 for line in lines), lines)
+
+    def test_table_alignment_and_inline_cells(self):
+        source = b"Left | Middle | Right\n:--- | :---: | ---:\n**a** | `b` | [c](url)\nx\\|y | `p|q` | 12\nempty | |\nshort | row\nextra | cells | kept | ignored\n"
+        plain = run("-m", "--color=never", "--width", "60", data=source).stdout
+        colored = run("-m", "--color=always", "--width", "60", data=source).stdout
+        self.assertIn(b"\x1b[", colored)
+        self.assertEqual(ANSI.sub(b"", colored), plain)
+        self.assertNotIn(b"**", plain)
+        self.assertIn(b"x|y", plain)
+        self.assertIn(b"p|q", plain)
+        self.assertIn(b"c (url)", plain)
+        self.assertNotIn(b"ignored", plain)
+        lines = plain.decode().splitlines()
+        separators = [tuple(i for i, ch in enumerate(line) if ch == "│")
+                      for line in lines if line.startswith("│") and "x|y" not in line and "p|q" not in line]
+        self.assertTrue(all(pos == separators[0] for pos in separators))
+        cells = lines[2].split("│")[1:-1]
+        self.assertTrue(cells[0].startswith(" a"), cells)
+        self.assertGreaterEqual(len(cells[1]) - len(cells[1].lstrip()), 2)
+        self.assertTrue(cells[2].endswith("c (url) "), cells)
+
+    def test_table_wrapping_and_stacked_layout(self):
+        import unicodedata
+        def cells(line):
+            return sum(0 if unicodedata.combining(ch) else
+                       2 if unicodedata.east_asian_width(ch) in "WF" else 1 for ch in line)
+        source = ("| Path | Contents |\n| --- | --- |\n" +
+                  "".join(f"| {path} | **Code** with café 界 and averylongunbrokenword |\n" for path in
+                          ["apps/server/src/", "apps/server/drizzle/", "apps/server/skills/",
+                           "apps/server/workspace-image/", "apps/web/", "apps/docs/", "apps/site/", "openapi/", "GLOSSARY.md"]) +
+                  "| unsafe | \x1b[2J and \u202eevil |\n").encode()
+        for width in [20, 30, 60, 80, 240]:
+            plain = run("-m", "--color=never", "--width", str(width), data=source)
+            color = run("-m", "--color=always", "--width", str(width), data=source)
+            self.assertEqual(plain.returncode, 0, plain.stderr)
+            self.assertEqual(ANSI.sub(b"", color.stdout), plain.stdout)
+            self.assertTrue(all(cells(line) <= width for line in plain.stdout.decode().splitlines()), plain.stdout)
+            self.assertNotIn(b"\x1b", ANSI.sub(b"", color.stdout))
+            self.assertNotIn("\u202e".encode(), plain.stdout)
+        source = b"one | two | three | four\n--- | --- | --- | ---\nfirst | second | third | fourth\n"
+        narrow = run("-m", "--width", "20", "--color=never", data=source).stdout
+        self.assertEqual(narrow, b"one\nfirst\ntwo\nsecond\nthree\nthird\nfour\nfourth\n\n")
+        self.assertIn("│".encode(), terminal("-m", "--width", "80", data=source))
+
+    def test_table_boundaries_and_non_tables(self):
+        table = b"A | B\n--- | ---\nx | y\n"
+        for suffix, expected in [(b"paragraph after\n", b"paragraph after\n"),
+                                 (b"# Heading | pipe\n", b"Heading | pipe\n"),
+                                 (b"```text | info\na | b\n```\n", b"a | b\n"),
+                                 (b"- list | item\n", "• list | item\n".encode())]:
+            result = run("-m", "--color=never", data=b"before\n" + table + suffix).stdout
+            self.assertTrue(result.startswith(b"before\n"), result)
+            self.assertTrue(result.endswith(expected), result)
+        for source in [b"a | b\nnot a delimiter\n", b"a | b\n-- | ---\n", b"a | b\n--- | --- | ---\n",
+                       b"a \\| b\n--- | ---\n", b"`a | b`\n--- | ---\n"]:
+            self.assertNotIn("│".encode(), run("-m", data=source).stdout)
+        # Too many columns or oversized rows remain ordinary text; parsing stays bounded.
+        for source in [(b"x | " * 40 + b"x\n") * 2,
+                       b"a | b\n--- | ---\n" + b"x" * 17000 + b" | y\n",
+                       table + b"x | y\n" * 10000]:
+            result = run("-m", "--width", "20", data=source)
+            self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_exact_pipe_bytes(self):
         for data in [b"", b"no newline", bytes(range(256)) * 1000,

@@ -2,7 +2,25 @@
 
 Verified with the official Zig 0.17.1 compiler on Linux x86-64. The downloaded compiler archive matched SHA-256 `3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a`.
 
-## Automated checks
+## Version 0.1.1 table regression
+
+The CLI regression failed against 0.1.0 before the renderer changed:
+
+```text
+python3 tests/integration.py zig-out/bin/zcat Cli.test_markdown_table_regression
+FAIL: ['| Path | Contents | | --- | --- | | apps/server/src/ |',
+       'Server code | | apps/web/ | Web client |']
+```
+
+The cause was missing table block recognition: header, delimiter, and body lines all entered the paragraph path. The renderer now recognizes the block before paragraph processing and renders cells separately.
+
+After the fix, `zig build test integration -Doptimize=MODE -j2 --summary all` passed **8 Zig tests and 17 CLI tests** in each of Debug, ReleaseSafe, and ReleaseFast. Native builds and `--version` passed in all three modes. Formatting passed. Linux ARM64-musl cross-compilation passed, without execution; the local executable was restored to native ReleaseSafe.
+
+New CLI coverage includes the reported paths table, ANSI-independent column alignment, left/center/right alignment, inline code and links, escaped pipes, code-span pipes, ragged rows, Unicode, control safety, wrapped long words, stacked narrow layouts, block boundaries, malformed delimiters, oversized rows, and a 10,000-row table. The tests drive the real executable, including a PTY table check.
+
+Release and Homebrew installation results are recorded in the release workflow and the tap's CI. The historical checks in the following sections describe the initial 0.1.0 release.
+
+## Initial automated checks
 
 | Command | Observed result |
 | --- | --- |

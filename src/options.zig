@@ -1,7 +1,7 @@
 const std = @import("std");
 
 pub const help =
-    \\zcat 0.1.0 — a terminal-aware cat (not the gzip decompressor)
+    \\zcat 0.1.1 — a terminal-aware cat (not the gzip decompressor)
     \\
     \\Usage: zcat [OPTIONS] [FILE ...]
     \\Read FILEs in order; '-' or no files reads stdin. Use '--' before dash-prefixed names.

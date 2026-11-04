@@ -1,0 +1,75 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: x86_64-linux
+            sha256: 3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a
+          - runner: macos-15
+            platform: aarch64-macos
+            sha256: 75f1bc7a1e9852f17ec9a0c1895f767c4ec56d46bc8a834920eece1d0359dd8d
+          - runner: macos-15-intel
+            platform: x86_64-macos
+            sha256: 9af07b20319fbd0c92ee46ad23e81d6a782b1aaea2cfb8dcbff35f1d2c7ddbb7
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install checksum-pinned compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(cat .zigversion)
+          curl --fail --location --retry 3 "https://ziglang.org/download/$version/zig-${{ matrix.platform }}-$version.tar.xz" -o zig.tar.xz
+          echo '${{ matrix.sha256 }}  zig.tar.xz' | shasum -a 256 --check
+          tar -xf zig.tar.xz
+          echo "$PWD/zig-${{ matrix.platform }}-$version" >> "$GITHUB_PATH"
+      - name: Test and build native executable
+        run: |
+          zig fmt --check build.zig build.zig.zon src
+          zig build test integration -Doptimize=ReleaseSafe -j2 --summary all
+          zig build -Doptimize=ReleaseSafe -j2
+          ./zig-out/bin/zcat --version
+      - name: Package executable and notices
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/.*\.version = "\([^"]*\)".*/\1/p' build.zig.zon)
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then test "$GITHUB_REF_NAME" = "v$version"; fi
+          name="zcat-$version-${{ matrix.platform }}"
+          mkdir -p "$name/bin"
+          cp zig-out/bin/zcat "$name/bin/"
+          cp LICENSE THIRD_PARTY.md README.md "$name/"
+          cp -R licenses "$name/"
+          tar -czf "$name.tar.gz" "$name"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: zcat-${{ matrix.platform }}
+          path: zcat-*.tar.gz
+          if-no-files-found: error
+  publish:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: zcat-*
+          merge-multiple: true
+      - name: Publish immutable versioned assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha256sum zcat-*.tar.gz > SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes zcat-*.tar.gz SHA256SUMS

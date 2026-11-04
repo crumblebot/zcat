@@ -51,7 +51,7 @@ const Inline = struct {
         var i: usize = 0;
         var start: usize = 0;
         while (i < text.len) {
-            if (text[i] == '\\' and i + 1 < text.len and std.mem.indexOfScalar(u8, "\\`*_[]()", text[i + 1]) != null) {
+            if (text[i] == '\\' and i + 1 < text.len and std.mem.indexOfScalar(u8, "\\`*_[]()|", text[i + 1]) != null) {
                 try self.emit(text[start..i]);
                 try self.emit(text[i + 1 .. i + 2]);
                 i += 2;
@@ -120,6 +120,233 @@ fn rule(line: []const u8) bool {
     return count >= 3;
 }
 
+const max_columns = 32;
+const Row = struct {
+    cells: [max_columns][]const u8 = @splat(""),
+    len: usize = 0,
+};
+const Alignment = enum { left, center, right };
+
+// Split only unescaped pipes outside matched backtick spans. Bound the column
+// count so malformed or adversarial input cannot allocate unbounded row state.
+fn tableRow(raw: []const u8) ?Row {
+    const text = std.mem.trim(u8, raw, " \t");
+    if (text.len > 16 * 1024 or fenceLength(text) > 0 or std.mem.startsWith(u8, text, ">") or
+        (text.len >= 2 and std.mem.indexOfScalar(u8, "-*+", text[0]) != null and text[1] == ' ')) return null;
+    var heading: usize = 0;
+    while (heading < text.len and text[heading] == '#') : (heading += 1) {}
+    if (heading >= 1 and heading <= 6 and heading < text.len and text[heading] == ' ') return null;
+    var digits: usize = 0;
+    while (digits < text.len and std.ascii.isDigit(text[digits])) : (digits += 1) {}
+    if (digits > 0 and digits + 1 < text.len and (text[digits] == '.' or text[digits] == ')') and text[digits + 1] == ' ') return null;
+    var result: Row = .{};
+    var start: usize = if (std.mem.startsWith(u8, text, "|")) 1 else 0;
+    var i = start;
+    var pipes: usize = start;
+    while (i < text.len) {
+        if (text[i] == '\\' and i + 1 < text.len) {
+            i += 2;
+            continue;
+        }
+        if (text[i] == '`') {
+            var end = i + 1;
+            while (end < text.len and text[end] == '`') : (end += 1) {}
+            if (std.mem.indexOf(u8, text[end..], text[i..end])) |distance| {
+                i = end + distance + (end - i);
+                continue;
+            }
+            i = end;
+            continue;
+        }
+        if (text[i] == '|') {
+            if (result.len == max_columns) return null;
+            result.cells[result.len] = std.mem.trim(u8, text[start..i], " \t");
+            result.len += 1;
+            pipes += 1;
+            start = i + 1;
+        }
+        i += 1;
+    }
+    if (start < text.len or !std.mem.endsWith(u8, text, "|")) {
+        if (result.len == max_columns) return null;
+        result.cells[result.len] = std.mem.trim(u8, text[start..], " \t");
+        result.len += 1;
+    }
+    return if (pipes > 0 and result.len > 0) result else null;
+}
+
+fn tableAlignment(row: Row, count: usize) ?[max_columns]Alignment {
+    if (row.len != count) return null;
+    var result: [max_columns]Alignment = @splat(.left);
+    for (row.cells[0..count], 0..) |cell, i| {
+        var marker = cell;
+        const left = std.mem.startsWith(u8, marker, ":");
+        const right = std.mem.endsWith(u8, marker, ":");
+        if (left) marker = marker[1..];
+        if (right and marker.len > 0) marker = marker[0 .. marker.len - 1];
+        if (marker.len < 3) return null;
+        for (marker) |c| if (c != '-') return null;
+        result[i] = if (left and right) .center else if (right) .right else .left;
+    }
+    return result;
+}
+
+// Input here is already sanitized inline output. Only our SGR sequences remain.
+fn visibleWidth(text: []const u8) usize {
+    var i: usize = 0;
+    var width: usize = 0;
+    while (i < text.len) {
+        if (text[i] == 27) {
+            i = (std.mem.indexOfScalarPos(u8, text, i, 'm') orelse unreachable) + 1;
+            continue;
+        }
+        const n = std.unicode.utf8ByteSequenceLength(text[i]) catch unreachable;
+        width += terminal.cells(std.unicode.utf8Decode(text[i..][0..n]) catch unreachable);
+        i += n;
+    }
+    return width;
+}
+
+fn cellText(a: std.mem.Allocator, text: []const u8, color: bool, width: usize) !std.Io.Writer.Allocating {
+    // Sanitize before wrapping: escaped controls must count as their visible
+    // representation, not as one invisible input code point.
+    var safe: std.Io.Writer.Allocating = .init(a);
+    defer safe.deinit();
+    try terminal.safe(&safe.writer, text);
+    var result: std.Io.Writer.Allocating = .init(a);
+    errdefer result.deinit();
+    var renderer: Inline = .{ .out = &result.writer, .color = color, .width = width };
+    try renderer.render(safe.written(), 0);
+    return result;
+}
+
+fn spaces(out: *std.Io.Writer, n: usize) !void {
+    try out.splatByteAll(' ', n);
+}
+
+fn tableBorder(out: *std.Io.Writer, widths: []const usize) !void {
+    try out.writeAll("├");
+    for (widths, 0..) |width, i| {
+        for (0..width + 2) |_| try out.writeAll("─");
+        try out.writeAll(if (i + 1 == widths.len) "┤\n" else "┼");
+    }
+}
+
+fn renderTableRow(a: std.mem.Allocator, out: *std.Io.Writer, row: Row, header: Row, widths: []const usize, alignment: []const Alignment, color: bool, stacked: bool, width: usize) !void {
+    if (stacked) {
+        for (widths, 0..) |_, i| {
+            var label = try cellText(a, header.cells[i], color, width);
+            defer label.deinit();
+            try out.writeAll(label.written());
+            if (color) try out.writeAll(terminal.reset);
+            try out.writeByte('\n');
+            var value = try cellText(a, row.cells[i], color, width);
+            defer value.deinit();
+            try out.writeAll(value.written());
+            if (color) try out.writeAll(terminal.reset);
+            try out.writeByte('\n');
+        }
+        try out.writeByte('\n');
+        return;
+    }
+    var cells: [max_columns]std.Io.Writer.Allocating = undefined;
+    var initialized: usize = 0;
+    defer for (cells[0..initialized]) |*cell| cell.deinit();
+    for (widths, 0..) |w, i| {
+        cells[i] = try cellText(a, row.cells[i], color, w);
+        initialized += 1;
+    }
+    var positions: [max_columns]usize = @splat(0);
+    var styles: [max_columns][]const u8 = @splat("");
+    while (true) {
+        var more = false;
+        try out.writeAll("│");
+        for (widths, 0..) |w, i| {
+            const text = cells[i].written();
+            const begin = positions[i];
+            const end = std.mem.indexOfScalarPos(u8, text, begin, '\n') orelse text.len;
+            const fragment = text[begin..end];
+            const padding = w -| visibleWidth(fragment);
+            const left = switch (alignment[i]) {
+                .left => 0,
+                .center => padding / 2,
+                .right => padding,
+            };
+            try spaces(out, left + 1);
+            try out.writeAll(styles[i]);
+            try out.writeAll(fragment);
+            if (color) try out.writeAll(terminal.reset);
+            try spaces(out, padding - left + 1);
+            try out.writeAll("│");
+            // Preserve active styling across wrapped fragments, without coloring
+            // padding or other cells. Inline's current model uses the last SGR.
+            var at: usize = 0;
+            while (std.mem.indexOfScalarPos(u8, fragment, at, 27)) |escape| {
+                const finish = (std.mem.indexOfScalarPos(u8, fragment, escape, 'm') orelse unreachable) + 1;
+                styles[i] = fragment[escape..finish];
+                at = finish;
+            }
+            positions[i] = if (end < text.len) end + 1 else text.len;
+            more = more or positions[i] < text.len;
+        }
+        try out.writeByte('\n');
+        if (!more) break;
+    }
+}
+
+fn renderTable(a: std.mem.Allocator, out: *std.Io.Writer, source: []const u8, header: Row, alignment: [max_columns]Alignment, body_start: usize, color: bool, width: usize) !usize {
+    var wanted: [max_columns]usize = @splat(3);
+    var end = body_start;
+    // Two passes, but only one row of rendered cells is retained in memory.
+    var row = header;
+    while (true) {
+        for (wanted[0..header.len], 0..) |*w, i| {
+            var text = try cellText(a, row.cells[i], false, std.math.maxInt(usize) / 2);
+            defer text.deinit();
+            w.* = @max(w.*, @min(width, visibleWidth(text.written())));
+        }
+        if (end == source.len) break;
+        const next = lineAt(source, end);
+        row = tableRow(next.text) orelse break;
+        end = next.next;
+    }
+    var widths: [max_columns]usize = @splat(3);
+    const stacked = header.len * 6 + 1 > width;
+    if (!stacked) {
+        var budget = width - (header.len * 6 + 1);
+        while (budget > 0) {
+            var grew = false;
+            for (widths[0..header.len], wanted[0..header.len]) |*w, want| {
+                if (budget == 0) break;
+                if (w.* < want) {
+                    w.* += 1;
+                    budget -= 1;
+                    grew = true;
+                }
+            }
+            if (!grew) break;
+        }
+        try renderTableRow(a, out, header, header, widths[0..header.len], alignment[0..header.len], color, false, width);
+        try tableBorder(out, widths[0..header.len]);
+    } else if (end == body_start) {
+        // Header-only tables still retain their labels on narrow terminals.
+        for (header.cells[0..header.len]) |label| {
+            var text = try cellText(a, label, color, width);
+            defer text.deinit();
+            try out.writeAll(text.written());
+            if (color) try out.writeAll(terminal.reset);
+            try out.writeByte('\n');
+        }
+    }
+    var pos = body_start;
+    while (pos < end) {
+        const next = lineAt(source, pos);
+        try renderTableRow(a, out, tableRow(next.text).?, header, widths[0..header.len], alignment[0..header.len], color, stacked, width);
+        pos = next.next;
+    }
+    return end;
+}
+
 pub fn render(a: std.mem.Allocator, io: std.Io, out: *std.Io.Writer, source: []const u8, color: bool, width: usize) !void {
     var pos: usize = 0;
     var paragraph = false;
@@ -159,6 +386,20 @@ pub fn render(a: std.mem.Allocator, io: std.Io, out: *std.Io.Writer, source: []c
             inline_out.column = 0;
             paragraph = false;
             continue;
+        }
+        if (tableRow(text)) |header| {
+            if (pos < source.len) {
+                const separator = lineAt(source, pos);
+                if (tableRow(separator.text)) |markers| {
+                    if (tableAlignment(markers, header.len)) |alignment| {
+                        if (paragraph) try out.writeByte('\n');
+                        pos = try renderTable(a, out, source, header, alignment, separator.next, color, width);
+                        inline_out.column = 0;
+                        paragraph = false;
+                        continue;
+                    }
+                }
+            }
         }
         if (rule(text)) {
             if (paragraph) try out.writeByte('\n');

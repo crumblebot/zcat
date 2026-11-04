@@ -69,7 +69,7 @@ fn run(init: std.process.Init) !void {
     const out = &stdout.interface;
     switch (opts.action) {
         .help => try out.writeAll(options.help),
-        .version => try out.writeAll("zcat 0.1.0\n"),
+        .version => try out.writeAll("zcat 0.1.1\n"),
         .languages => try out.writeAll("zig javascript typescript tsx python json bash c rust markdown text\n"),
         .run => {},
     }

@@ -4,7 +4,22 @@ A terminal-aware `cat` alternative written in Zig. Read source files with Tree-s
 
 **Name collision:** Unix systems often provide a gzip decompressor named `zcat`. This project doesn't decompress files. Don't replace `/usr/bin/zcat`. Run the local binary or install it under a distinct name, such as `zcat-view`.
 
-## Build and install
+## Install with Homebrew
+
+Install the [zcat tap](https://github.com/crumblebot/homebrew-tap):
+
+```sh
+brew install crumblebot/tap/zcat
+zcat-view README.md
+```
+
+The formula installs **`zcat-view`**, not `zcat`, so it doesn't shadow gzip's decompressor or overwrite existing binaries. To use the original executable name explicitly, run `"$(brew --prefix crumblebot/tap/zcat)/libexec/bin/zcat"`.
+
+The tap downloads checksum-pinned release binaries with bundled license notices. You don't need Zig or build dependencies. Releases target Apple Silicon and Intel Macs, and Linux x86-64. The release workflow runs native tests before publishing each platform's binary.
+
+Upgrade with `brew update && brew upgrade crumblebot/tap/zcat`. Uninstall with `brew uninstall crumblebot/tap/zcat`.
+
+## Build from source
 
 You need **Zig 0.17.1**, Git, and network access for the first build. The compiler version is pinned in `.zigversion`. Download Zig from the [official Zig downloads page](https://ziglang.org/download/) and verify its published SHA-256 checksum.
 
@@ -76,7 +91,7 @@ Use `--plain` for unmodified streaming output even in a terminal:
 | `-m`, `--markdown` | Render Markdown even when output is redirected. |
 | `-n`, `--number` | Number output lines continuously across files. Number rendered lines in pretty mode. |
 | `--plain`, `--raw` | Stream exact bytes; override color and language options. Can't combine with Markdown or numbering. |
-| `--width N` | Set Markdown prose and rule width to 20–240 cells. |
+| `--width N` | Set Markdown prose, table, and rule width to 20–240 cells. |
 | `--list-languages` | List canonical language names. |
 | `-h`, `--help` | Show help. |
 | `-V`, `--version` | Show version. |
@@ -116,10 +131,13 @@ The native terminal renderer supports:
 - Paired single-marker emphasis, double-marker strong emphasis, and single-backtick inline code.
 - Inline links rendered as `label (URL)`, without active terminal hyperlinks.
 - Backtick and tilde fences, with optional language names and Tree-sitter code highlighting.
+- Pipe tables with header and delimiter rows, optional outer pipes, alignment markers, and wrapped cells.
 - Horizontal rules composed of at least three `-`, `*`, or `_` markers.
 - Escaped inline punctuation and literal unknown markup.
 
-This is **not a CommonMark implementation**. Tables, HTML, images, reference links, nested list layout, task checkboxes, setext headings, multi-backtick inline code, and full delimiter-flanking rules aren't implemented. Nested inline styles can lose outer ANSI styling after an inner reset. Unknown constructs remain readable text rather than receiving full Markdown semantics.
+Tables keep column boundaries aligned, excluding ANSI styling from width calculations. Long words and cell contents wrap within `--width`. When columns can't fit with three content cells each, rows use stacked header/value pairs. Escape literal pipes as `\|`; pipes inside matched backtick spans don't split cells. Missing cells are empty; extra cells are ignored. Tables end at blank lines, non-pipe prose, headings, lists, quotes, or fences. Rows longer than 16 KiB or wider than 32 columns remain ordinary text.
+
+This is **not a CommonMark implementation**. HTML, images, reference links, nested list layout, task checkboxes, setext headings, multi-backtick inline code styling, and full delimiter-flanking rules aren't implemented. Nested inline styles can lose outer ANSI styling after an inner reset. Unknown constructs remain readable text rather than receiving full Markdown semantics.
 
 Prose wraps to the configured width; code blocks preserve source lines and don't wrap internally. Cell widths approximate combining marks and East Asian characters, not complete grapheme shaping. Emoji sequences and terminal-specific ambiguous widths can differ. Escaped controls can exceed the nominal width. Lists and quotes use flat prefixes without hanging indentation. Resizing a terminal doesn't reflow already printed text.
 
