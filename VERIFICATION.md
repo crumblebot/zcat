@@ -18,7 +18,9 @@ After the fix, `zig build test integration -Doptimize=MODE -j2 --summary all` pa
 
 New CLI coverage includes the reported paths table, ANSI-independent column alignment, left/center/right alignment, inline code and links, escaped pipes, code-span pipes, ragged rows, Unicode, control safety, wrapped long words, stacked narrow layouts, block boundaries, malformed delimiters, oversized rows, and a 10,000-row table. The tests drive the real executable, including a PTY table check.
 
-Release and Homebrew installation results are recorded in the release workflow and the tap's CI. The historical checks in the following sections describe the initial 0.1.0 release.
+The [native release dry run](https://github.com/crumblebot/zcat/actions/runs/41812578412) passed on Linux x86-64, macOS Intel, and macOS ARM64: 8 Zig tests per platform; 17 CLI passes on Linux, 16 passes and one Linux-only `/dev/full` skip on each Mac. The three-mode [Linux CI run](https://github.com/crumblebot/zcat/actions/runs/41812580766) also passed. Static x86-64-musl baseline-CPU builds passed the same 8 Zig and 17 CLI tests locally. Both baseline-CPU macOS 15 deployment targets cross-compiled locally; release CI executes those targets natively before publication.
+
+Homebrew installation results are recorded in the [tap's CI](https://github.com/crumblebot/homebrew-tap/actions). The historical checks in the following sections describe the initial 0.1.0 release.
 
 ## Initial automated checks
 

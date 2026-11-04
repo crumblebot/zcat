@@ -15,7 +15,7 @@ zcat-view README.md
 
 The formula installs **`zcat-view`**, not `zcat`, so it doesn't shadow gzip's decompressor or overwrite existing binaries. To use the original executable name explicitly, run `"$(brew --prefix crumblebot/tap/zcat)/libexec/bin/zcat"`.
 
-The tap downloads checksum-pinned release binaries with bundled license notices. You don't need Zig or build dependencies. Releases target Apple Silicon and Intel Macs, and Linux x86-64. The release workflow runs native tests before publishing each platform's binary.
+The tap downloads checksum-pinned release binaries with bundled license notices. You don't need Zig or build dependencies. Releases target Apple Silicon and Intel Macs running macOS 15 or later, and Linux x86-64. Linux packages use static musl linking; all release packages use baseline CPU targets. The release workflow runs native tests before publishing each platform's binary.
 
 Upgrade with `brew update && brew upgrade crumblebot/tap/zcat`. Uninstall with `brew uninstall crumblebot/tap/zcat`.
 
@@ -41,7 +41,7 @@ mkdir -p "$HOME/.local/bin"
 cp zig-out/bin/zcat "$HOME/.local/bin/zcat-view"
 ```
 
-Linux x86-64 is tested natively. Linux ARM64 with musl is cross-compiled, not runtime-tested. Other platforms aren't currently verified.
+Linux x86-64, macOS Intel, and macOS ARM64 builds have passed native tests. Linux ARM64 with musl is cross-compiled, not runtime-tested. Windows isn't verified.
 
 ## Read files and stdin
 

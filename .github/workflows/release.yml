@@ -13,12 +13,15 @@ jobs:
         include:
           - runner: ubuntu-24.04
             platform: x86_64-linux
+            build_flags: -Dtarget=x86_64-linux-musl -Dcpu=baseline
             sha256: 3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a
           - runner: macos-15
             platform: aarch64-macos
+            build_flags: -Dtarget=aarch64-macos.15.0 -Dcpu=baseline
             sha256: 75f1bc7a1e9852f17ec9a0c1895f767c4ec56d46bc8a834920eece1d0359dd8d
           - runner: macos-15-intel
             platform: x86_64-macos
+            build_flags: -Dtarget=x86_64-macos.15.0 -Dcpu=baseline
             sha256: 9af07b20319fbd0c92ee46ad23e81d6a782b1aaea2cfb8dcbff35f1d2c7ddbb7
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
@@ -36,8 +39,8 @@ jobs:
       - name: Test and build native executable
         run: |
           zig fmt --check build.zig build.zig.zon src
-          zig build test integration -Doptimize=ReleaseSafe -j2 --summary all
-          zig build -Doptimize=ReleaseSafe -j2
+          zig build test integration -Doptimize=ReleaseSafe ${{ matrix.build_flags }} -j2 --summary all
+          zig build -Doptimize=ReleaseSafe ${{ matrix.build_flags }} -j2
           ./zig-out/bin/zcat --version
       - name: Package executable and notices
         shell: bash
