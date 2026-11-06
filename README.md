@@ -31,7 +31,20 @@ brew install crumblebot/zcat/zcat
 zc --version
 ```
 
-If you no longer use any formulas from `crumblebot/tap`, remove the old tap with `brew untap crumblebot/tap`.
+If you no longer use any formulas from `crumblebot/tap`, remove the old tap:
+
+```sh
+brew untap crumblebot/tap
+```
+
+If Homebrew refuses to load the old formula because it's untrusted, restore formula-specific trust and retry:
+
+```sh
+brew trust --formula crumblebot/tap/zcat
+brew untap crumblebot/tap
+```
+
+Current Homebrew revokes formula-specific trust after uninstalling. Older Homebrew versions might not provide `brew trust`.
 Don't force the untap if Homebrew reports other installed formulas. Use the fully qualified formula name to avoid ambiguity.
 
 ### Maintain the formula
