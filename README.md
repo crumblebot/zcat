@@ -6,10 +6,11 @@ The project is named **zcat**; its executable is **`zc`**. It doesn't decompress
 
 ## Install with Homebrew
 
-Install the [zcat tap](https://github.com/crumblebot/homebrew-tap):
+Add this repository as a tap, then install the [zcat formula](Formula/zcat.rb):
 
 ```sh
-brew install crumblebot/tap/zcat
+brew tap crumblebot/zcat https://github.com/crumblebot/zcat
+brew install crumblebot/zcat/zcat
 zc README.md
 ```
 
@@ -17,7 +18,28 @@ The formula is named `zcat` and installs the `zc` command. It doesn't install `z
 
 The tap downloads checksum-pinned release binaries with bundled license notices. You don't need Zig or build dependencies. Releases target Apple Silicon and Intel Macs running macOS 15 or later, and Linux x86-64. Linux packages use static musl linking; all release packages use baseline CPU targets. The release workflow runs native tests before publishing each platform's binary.
 
-Upgrade with `brew update && brew upgrade crumblebot/tap/zcat`. Uninstall with `brew uninstall crumblebot/tap/zcat`.
+Upgrade with `brew update && brew upgrade crumblebot/zcat/zcat`. Uninstall with `brew uninstall crumblebot/zcat/zcat`.
+
+### Migrate from the old tap
+
+If you installed `crumblebot/tap/zcat`, reinstall it from this repository. This briefly removes `zc` without removing other formulas:
+
+```sh
+brew uninstall crumblebot/tap/zcat
+brew tap crumblebot/zcat https://github.com/crumblebot/zcat
+brew install crumblebot/zcat/zcat
+zc --version
+```
+
+If you no longer use any formulas from `crumblebot/tap`, remove the old tap with `brew untap crumblebot/tap`.
+Don't force the untap if Homebrew reports other installed formulas. Use the fully qualified formula name to avoid ambiguity.
+
+### Maintain the formula
+
+Update `Formula/zcat.rb` in this repository after publishing a release. Verify each archive against the release's `SHA256SUMS`, then update the URLs and hashes. Don't replace existing release tags or assets.
+
+The old tap's formula stays frozen for compatibility; this repository is the only maintained source.
+The [Homebrew workflow](.github/workflows/homebrew.yml) checks explicit-URL installation, formula tests, style, strict audit, migration, and uninstall on Linux x86-64 and both Mac architectures.
 
 ## Build from source
 

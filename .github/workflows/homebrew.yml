@@ -1,0 +1,72 @@
+name: Homebrew
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: Homebrew/actions/setup-homebrew@55301c8cac0982bc2fbeb71275fa0b71b963bdb1
+      - name: Tap the source repository by explicit URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew tap crumblebot/zcat https://github.com/crumblebot/zcat
+          tap_repo=$(brew --repo crumblebot/zcat)
+          test "$(git -C "$tap_repo" remote get-url origin)" = https://github.com/crumblebot/zcat
+          # Test this checkout on PRs too, while preserving the real tap origin.
+          git -C "$tap_repo" fetch "$GITHUB_WORKSPACE" HEAD
+          git -C "$tap_repo" reset --hard FETCH_HEAD
+          cmp Formula/zcat.rb "$tap_repo/Formula/zcat.rb"
+      - name: Install the published formula
+        id: install
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install crumblebot/zcat/zcat
+          zc --version
+          test ! -e "$(brew --prefix crumblebot/zcat/zcat)/bin/zcat"
+          test ! -e "$(brew --prefix crumblebot/zcat/zcat)/bin/zcat-view"
+          test -x "$(brew --prefix crumblebot/zcat/zcat)/bin/zc"
+      - name: Test the formula
+        run: brew test crumblebot/zcat/zcat
+      - name: Check formula style
+        if: always() && steps.install.outcome == 'success'
+        run: brew style crumblebot/zcat/zcat
+      - name: Audit the formula
+        if: always() && steps.install.outcome == 'success'
+        run: brew audit --strict crumblebot/zcat/zcat
+      - name: Uninstall the formula
+        if: always() && steps.install.outcome == 'success'
+        run: brew uninstall crumblebot/zcat/zcat
+      - name: Verify migration from the frozen tap
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew untap crumblebot/zcat
+          brew tap crumblebot/tap
+          brew install crumblebot/tap/zcat
+          # These are the documented migration commands, not a forced untap.
+          brew uninstall crumblebot/tap/zcat
+          brew tap crumblebot/zcat https://github.com/crumblebot/zcat
+          brew install crumblebot/zcat/zcat
+          zc --version
+          brew untap crumblebot/tap
+          brew test crumblebot/zcat/zcat
+          brew info --json=v2 crumblebot/zcat/zcat > "$RUNNER_TEMP/zcat-info.json"
+          python3 -c 'import json, sys; f = json.load(open(sys.argv[1]))["formulae"][0]; assert f["tap"] == "crumblebot/zcat"; assert f["installed"]; assert all(i["installed_on_request"] for i in f["installed"])' "$RUNNER_TEMP/zcat-info.json"
+      - name: Clean up migration installation
+        if: always() && steps.install.outcome == 'success'
+        run: |
+          if brew list --formula --full-name | grep -qx crumblebot/zcat/zcat; then
+            brew uninstall crumblebot/zcat/zcat
+          fi
