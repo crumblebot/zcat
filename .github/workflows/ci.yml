@@ -30,9 +30,13 @@ jobs:
         run: zig build test integration -Doptimize=${{ matrix.optimize }} -j2 --summary all
       - name: Install executable and smoke test
         run: |
+          rm -rf zig-out
           zig build -Doptimize=${{ matrix.optimize }} -j2
-          ./zig-out/bin/zcat --version
-          printf 'hello\n' | ./zig-out/bin/zcat --plain
+          test -x zig-out/bin/zc
+          test ! -e zig-out/bin/zcat
+          test ! -e zig-out/bin/zcat-view
+          ./zig-out/bin/zc --version
+          printf 'hello\n' | ./zig-out/bin/zc --plain
       - name: Cross-compile Linux ARM64
         if: matrix.optimize == 'ReleaseSafe'
         run: zig build -Dtarget=aarch64-linux-musl -Doptimize=ReleaseSafe -j2

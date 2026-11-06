@@ -56,13 +56,18 @@ def terminal(*args, data=b"", env=ENV):
 
 class Cli(unittest.TestCase):
     def test_help_version_errors(self):
-        self.assertIn(b"Usage:", run("--help").stdout)
-        self.assertEqual(run("--version").stdout, b"zcat 0.1.1\n")
+        self.assertIn(b"Usage: zc [OPTIONS] [FILE ...]", run("--help").stdout)
+        self.assertEqual(run("--version").stdout, b"zc 0.1.2\n")
         self.assertIn(b"typescript", run("--list-languages").stdout)
         for args in [("--bogus",), ("--color=bogus",), ("-l",),
                      ("-l", "unknown"), ("--width", "19"),
                      ("--plain", "-m"), ("--plain", "-n")]:
-            self.assertEqual(run(*args).returncode, 2, args)
+            result = run(*args)
+            self.assertEqual(result.returncode, 2, args)
+            self.assertTrue(result.stderr.startswith(b"zc: "), result.stderr)
+        missing = run("/nonexistent-zc-input")
+        self.assertEqual(missing.returncode, 1)
+        self.assertTrue(missing.stderr.startswith(b"zc: "), missing.stderr)
 
     def test_markdown_table_regression(self):
         source = b"| Path | Contents |\n| --- | --- |\n| apps/server/src/ | Server code |\n| apps/web/ | Web client |\n"

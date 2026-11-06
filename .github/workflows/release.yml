@@ -41,7 +41,9 @@ jobs:
           zig fmt --check build.zig build.zig.zon src
           zig build test integration -Doptimize=ReleaseSafe ${{ matrix.build_flags }} -j2 --summary all
           zig build -Doptimize=ReleaseSafe ${{ matrix.build_flags }} -j2
-          ./zig-out/bin/zcat --version
+          ./zig-out/bin/zc --version
+          test ! -e zig-out/bin/zcat
+          test ! -e zig-out/bin/zcat-view
       - name: Package executable and notices
         shell: bash
         run: |
@@ -50,7 +52,7 @@ jobs:
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then test "$GITHUB_REF_NAME" = "v$version"; fi
           name="zcat-$version-${{ matrix.platform }}"
           mkdir -p "$name/bin"
-          cp zig-out/bin/zcat "$name/bin/"
+          cp zig-out/bin/zc "$name/bin/"
           cp LICENSE THIRD_PARTY.md README.md "$name/"
           cp -R licenses "$name/"
           tar -czf "$name.tar.gz" "$name"

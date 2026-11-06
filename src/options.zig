@@ -1,9 +1,9 @@
 const std = @import("std");
 
 pub const help =
-    \\zcat 0.1.1 — a terminal-aware cat (not the gzip decompressor)
+    \\zc 0.1.2 — a terminal-aware cat (zcat project)
     \\
-    \\Usage: zcat [OPTIONS] [FILE ...]
+    \\Usage: zc [OPTIONS] [FILE ...]
     \\Read FILEs in order; '-' or no files reads stdin. Use '--' before dash-prefixed names.
     \\
     \\  --color=auto|always|never  ANSI policy (default: auto; respects NO_COLOR, TERM=dumb)

@@ -2,6 +2,22 @@
 
 Verified with the official Zig 0.17.1 compiler on Linux x86-64. The downloaded compiler archive matched SHA-256 `3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a`.
 
+## Version 0.1.2 executable rename
+
+The project and release archives remain named `zcat`; the installed executable is `zc`.
+
+Local Linux x86-64 checks passed with Zig 0.17.1:
+
+- Formatting: `zig fmt --check build.zig build.zig.zon src`.
+- Unit and integration tests in Debug, ReleaseSafe, and ReleaseFast: 8 Zig tests and 17 CLI tests per mode.
+- Clean native installs in all three modes contained `zig-out/bin/zc`, without `zcat` or `zcat-view` executables.
+- Help displayed `Usage: zc [OPTIONS] [FILE ...]`; version displayed `zc 0.1.2`.
+- Integration tests verified the `zc:` prefix for invalid options and missing files, preserving existing table tests.
+- Linux ARM64-musl cross-compilation passed without execution. A native ReleaseSafe build restored the local executable.
+- A native raw-mode smoke check reproduced `hello` followed by a newline.
+
+The following sections retain historical executable names and results from earlier versions.
+
 ## Version 0.1.1 table regression
 
 The CLI regression failed against 0.1.0 before the renderer changed:

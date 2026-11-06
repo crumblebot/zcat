@@ -15,11 +15,11 @@ pub fn build(b: *std.Build) void {
             .{ .name = "grammars", .module = grammars },
         },
     });
-    const exe = b.addExecutable(.{ .name = "zcat", .root_module = module });
+    const exe = b.addExecutable(.{ .name = "zc", .root_module = module });
     b.installArtifact(exe);
     const run = b.addRunArtifact(exe);
     run.step.dependOn(b.getInstallStep());
-    b.step("run", "Run zcat").dependOn(&run.step);
+    b.step("run", "Run zc").dependOn(&run.step);
     const tests = b.addTest(.{ .root_module = module });
     b.step("test", "Run unit and parser tests").dependOn(&b.addRunArtifact(tests).step);
     const integration = b.addSystemCommand(&.{ "python3", "tests/integration.py" });

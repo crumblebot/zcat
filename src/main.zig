@@ -47,7 +47,7 @@ pub fn main(init: std.process.Init) void {
     run(init) catch |err| {
         var buffer: [1024]u8 = undefined;
         var stderr = std.Io.File.stderr().writerStreaming(init.io, &buffer);
-        stderr.interface.print("zcat: {s}\n", .{@errorName(err)}) catch {};
+        stderr.interface.print("zc: {s}\n", .{@errorName(err)}) catch {};
         stderr.interface.flush() catch {};
         std.process.exit(1);
     };
@@ -59,7 +59,7 @@ fn run(init: std.process.Init) !void {
     var opts = options.parse(a, args[1..]) catch |err| {
         var buffer: [1024]u8 = undefined;
         var stderr = std.Io.File.stderr().writerStreaming(init.io, &buffer);
-        try stderr.interface.print("zcat: {s}; see --help\n", .{@errorName(err)});
+        try stderr.interface.print("zc: {s}; see --help\n", .{@errorName(err)});
         try stderr.interface.flush();
         std.process.exit(2);
     };
@@ -69,7 +69,7 @@ fn run(init: std.process.Init) !void {
     const out = &stdout.interface;
     switch (opts.action) {
         .help => try out.writeAll(options.help),
-        .version => try out.writeAll("zcat 0.1.1\n"),
+        .version => try out.writeAll("zc 0.1.2\n"),
         .languages => try out.writeAll("zig javascript typescript tsx python json bash c rust markdown text\n"),
         .run => {},
     }
@@ -107,7 +107,7 @@ fn run(init: std.process.Init) !void {
 fn diagnostic(io: std.Io, path: []const u8, err: anyerror) !void {
     var buffer: [1024]u8 = undefined;
     var stderr = std.Io.File.stderr().writerStreaming(io, &buffer);
-    try stderr.interface.writeAll("zcat: ");
+    try stderr.interface.writeAll("zc: ");
     try terminal.safe(&stderr.interface, path);
     try stderr.interface.print(": {s}\n", .{@errorName(err)});
     try stderr.interface.flush();

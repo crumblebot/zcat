@@ -2,7 +2,7 @@
 
 A terminal-aware `cat` alternative written in Zig. Read source files with Tree-sitter syntax highlighting, or render Markdown in your terminal.
 
-**Name collision:** Unix systems often provide a gzip decompressor named `zcat`. This project doesn't decompress files. Don't replace `/usr/bin/zcat`. Run the local binary or install it under a distinct name, such as `zcat-view`.
+The project is named **zcat**; its executable is **`zc`**. It doesn't decompress files or replace gzip's `zcat` command.
 
 ## Install with Homebrew
 
@@ -10,10 +10,10 @@ Install the [zcat tap](https://github.com/crumblebot/homebrew-tap):
 
 ```sh
 brew install crumblebot/tap/zcat
-zcat-view README.md
+zc README.md
 ```
 
-The formula installs **`zcat-view`**, not `zcat`, so it doesn't shadow gzip's decompressor or overwrite existing binaries. To use the original executable name explicitly, run `"$(brew --prefix crumblebot/tap/zcat)/libexec/bin/zcat"`.
+The formula is named `zcat` and installs the `zc` command. It doesn't install `zcat` or `zcat-view` aliases.
 
 The tap downloads checksum-pinned release binaries with bundled license notices. You don't need Zig or build dependencies. Releases target Apple Silicon and Intel Macs running macOS 15 or later, and Linux x86-64. Linux packages use static musl linking; all release packages use baseline CPU targets. The release workflow runs native tests before publishing each platform's binary.
 
@@ -29,17 +29,19 @@ Build the executable:
 git clone https://github.com/crumblebot/zcat.git
 cd zcat
 zig build -Doptimize=ReleaseSafe -j2
-./zig-out/bin/zcat --help
+./zig-out/bin/zc --help
 ```
 
-The executable is `zig-out/bin/zcat`. Grammars and the Tree-sitter runtime compile into the binary; no system Tree-sitter installation is required. The dependency commit and package hash are pinned in `build.zig.zon`. Transitive grammar revisions and hashes are pinned by ztreesitter.
+The executable is `zig-out/bin/zc`. Grammars and the Tree-sitter runtime compile into the binary; no system Tree-sitter installation is required. The dependency commit and package hash are pinned in `build.zig.zon`. Transitive grammar revisions and hashes are pinned by ztreesitter.
 
-Optionally install it without shadowing the system decompressor:
+Optionally install `zc` in your local binary directory:
 
 ```sh
 mkdir -p "$HOME/.local/bin"
-cp zig-out/bin/zcat "$HOME/.local/bin/zcat-view"
+cp zig-out/bin/zc "$HOME/.local/bin/zc"
 ```
+
+If you built an earlier version, remove its `zig-out` directory before rebuilding to discard the old executable. Update scripts that invoke `zcat-view` or this project's former `zcat` binary to use `zc`.
 
 Linux x86-64, macOS Intel, and macOS ARM64 builds have passed native tests. Linux ARM64 with musl is cross-compiled, not runtime-tested. Windows isn't verified.
 
@@ -48,18 +50,18 @@ Linux x86-64, macOS Intel, and macOS ARM64 builds have passed native tests. Linu
 Highlight source files automatically when stdout is a terminal:
 
 ```sh
-./zig-out/bin/zcat src/main.zig
-./zig-out/bin/zcat README.md
-./zig-out/bin/zcat -n src/options.zig src/terminal.zig
-printf 'const answer = 42;\n' | ./zig-out/bin/zcat -l zig
+zc src/main.zig
+zc README.md
+zc -n src/options.zig src/terminal.zig
+printf 'const answer = 42;\n' | zc -l zig
 ```
 
 Concatenate exact bytes when stdout is redirected:
 
 ```sh
-./zig-out/bin/zcat first.txt second.txt > combined.txt
-printf 'stdin\n' | ./zig-out/bin/zcat first.txt - second.txt
-./zig-out/bin/zcat -- -dash-prefixed-file
+zc first.txt second.txt > combined.txt
+printf 'stdin\n' | zc first.txt - second.txt
+zc -- -dash-prefixed-file
 ```
 
 No filenames means stdin. Each `-` reads stdin at its current position; after EOF, subsequent `-` operands contribute no bytes. Files are processed in order, without banners or separators.
@@ -67,15 +69,15 @@ No filenames means stdin. Each `-` reads stdin at its current position; after EO
 Force highlighting in a redirected output, or render Markdown without ANSI colors:
 
 ```sh
-./zig-out/bin/zcat --color=always -l python script.py > highlighted.ansi
-./zig-out/bin/zcat --markdown --color=never README.md > readable.txt
-./zig-out/bin/zcat --markdown --width 60 tests/fixtures/sample.md
+zc --color=always -l python script.py > highlighted.ansi
+zc --markdown --color=never README.md > readable.txt
+zc --markdown --width 60 tests/fixtures/sample.md
 ```
 
 Use `--plain` for unmodified streaming output even in a terminal:
 
 ```sh
-./zig-out/bin/zcat --plain data.bin > copy.bin
+zc --plain data.bin > copy.bin
 ```
 
 **Security:** Pretty output escapes input terminal controls, including ESC, OSC sequences, C1 controls, and bidirectional overrides. It never opens URLs or emits OSC hyperlinks. Raw output deliberately preserves all input bytes, including control sequences. Don't use `--plain` to inspect untrusted files directly in a terminal. Normal redirected output also preserves any ANSI sequences already present in the input; it adds none.
