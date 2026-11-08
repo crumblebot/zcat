@@ -36,6 +36,12 @@ The first cross-build attempt exhausted workspace disk space. Removing only zcat
 - PTY window geometry, preserved aspect ratio, fit within terminal rows/columns, and pipe stdin without terminal queries or hangs.
 - Existing Markdown, table layout, highlighting, byte identity, control escaping, large-text fallback, closed pipes, and input errors remain covered.
 
+## Published release
+
+[Release v0.2.0](https://github.com/crumblebot/zcat/releases/tag/v0.2.0) was built and published by [native release CI](https://github.com/crumblebot/zcat/actions/runs/42465915439). Linux passed 10 Zig and 23 Python tests. Each Mac architecture passed 10 Zig tests and 22 Python tests, with the Linux-only `/dev/full` test skipped. The three-mode [Linux CI](https://github.com/crumblebot/zcat/actions/runs/42465913615) also passed, including the ARM64-musl cross-build.
+
+All three downloaded archives matched the published `SHA256SUMS`. The extracted Linux release executable passed both Python suites again: 18 CLI and 5 image tests. The canonical formula was updated only after verifying these real artifacts. Earlier Homebrew runs on the feature commit failed while downloading old v0.1.2 Mac archives with HTTP 504 responses, before the new formula was available.
+
 ## Visual limits
 
 Neither Ghostty nor the Rex client is installed in the Linux development environment. Ghostty isn't available from this environment's configured apt repositories. Rex's public client is macOS-only. A server-only installation wouldn't provide a native visual test. Native Ghostty and Rex visual checks were **not performed**. Protocol/PTY assertions aren't a substitute for viewing an image in those terminals.
