@@ -3,6 +3,7 @@ const options = @import("options.zig");
 const terminal = @import("terminal.zig");
 const highlight = @import("highlight.zig");
 const markdown = @import("markdown.zig");
+const image = @import("image.zig");
 const max_pretty = 8 * 1024 * 1024;
 
 const Sink = struct {
@@ -25,7 +26,11 @@ const Sink = struct {
     }
 
     fn write(self: *Sink, bytes: []const u8) std.Io.Writer.Error!void {
-        if (!self.number) return self.out.writeAll(bytes);
+        if (!self.number) {
+            try self.out.writeAll(bytes);
+            if (bytes.len != 0) self.line_start = bytes[bytes.len - 1] == '\n';
+            return;
+        }
         var pos: usize = 0;
         while (pos < bytes.len) {
             if (self.line_start) {
@@ -69,7 +74,7 @@ fn run(init: std.process.Init) !void {
     const out = &stdout.interface;
     switch (opts.action) {
         .help => try out.writeAll(options.help),
-        .version => try out.writeAll("zc 0.1.2\n"),
+        .version => try out.writeAll("zc 0.2.0\n"),
         .languages => try out.writeAll("zig javascript typescript tsx python json bash c rust markdown text\n"),
         .run => {},
     }
@@ -78,11 +83,16 @@ fn run(init: std.process.Init) !void {
     const no_color = if (init.environ_map.get("NO_COLOR")) |v| v.len != 0 else false;
     const dumb = if (init.environ_map.get("TERM")) |v| std.mem.eql(u8, v, "dumb") else false;
     const color = opts.color == .always or (opts.color == .auto and tty and !no_color and !dumb);
-    const pretty = !opts.plain and (tty or opts.color == .always or opts.markdown);
+    const pretty = !opts.plain and (tty or opts.color == .always or opts.markdown or opts.images == .kitty);
     if (!opts.width_set) if (init.environ_map.get("COLUMNS")) |v| {
         const width = std.fmt.parseInt(usize, v, 10) catch 80;
         opts.width = std.math.clamp(width, 20, 240);
     };
+    const term = init.environ_map.get("TERM") orelse "";
+    const program = init.environ_map.get("TERM_PROGRAM") orelse "";
+    const images_enabled = !opts.plain and (opts.images == .kitty or (opts.images == .auto and tty and
+        (std.mem.eql(u8, term, "xterm-ghostty") or std.mem.eql(u8, term, "xterm-kitty") or std.mem.eql(u8, program, "ghostty"))));
+    const image_context: image.Context = .{ .enabled = images_enabled, .geometry = image.Geometry.detect(opts.width), .graphics_out = out };
     var sink: Sink = .{ .out = out, .number = opts.number };
     const files = if (opts.files.items.len == 0) &[_][]const u8{"-"} else opts.files.items;
     var failed = false;
@@ -94,7 +104,7 @@ fn run(init: std.process.Init) !void {
             continue;
         };
         defer if (!stdin) file.close(init.io);
-        process(a, init.io, file, &sink, path, opts, pretty, color) catch |err| {
+        process(a, init.io, file, &sink, path, opts, pretty, color, image_context) catch |err| {
             if (err == error.WriteFailed) return err;
             try diagnostic(init.io, path, err);
             failed = true;
@@ -113,10 +123,18 @@ fn diagnostic(io: std.Io, path: []const u8, err: anyerror) !void {
     try stderr.interface.flush();
 }
 
-fn process(a: std.mem.Allocator, io: std.Io, file: std.Io.File, sink: *Sink, path: []const u8, opts: options.Options, pretty: bool, color: bool) !void {
+fn process(a: std.mem.Allocator, io: std.Io, file: std.Io.File, sink: *Sink, path: []const u8, opts: options.Options, pretty: bool, color: bool, image_context: image.Context) !void {
     if ((try file.stat(io)).kind == .directory) return error.IsDirectory;
     var buffer: [65536]u8 = undefined;
     var reader = file.readerStreaming(io, &buffer);
+    const direct_image = !opts.plain and image.extension(path) and (pretty or opts.images == .kitty);
+    if (direct_image) {
+        if (!image_context.enabled) return error.ImageProtocolUnavailable;
+        const bytes = try reader.interface.allocRemaining(a, .limited(image.max_input));
+        defer a.free(bytes);
+        try image.render(a, sink.out, bytes, image_context.geometry);
+        return;
+    }
     if (!pretty and !opts.number) {
         _ = try reader.interface.streamRemaining(sink.out);
         return;
@@ -129,6 +147,15 @@ fn process(a: std.mem.Allocator, io: std.Io, file: std.Io.File, sink: *Sink, pat
     while (true) {
         const n = try reader.interface.readSliceShort(&chunk);
         if (n == 0) break;
+        if (pretty and source.items.len == 0 and image.signature(chunk[0..n])) {
+            if (!image_context.enabled) return error.ImageProtocolUnavailable;
+            try source.appendSlice(a, chunk[0..n]);
+            const rest = try reader.interface.allocRemaining(a, .limited(image.max_input - n));
+            defer a.free(rest);
+            try source.appendSlice(a, rest);
+            try image.render(a, sink.out, source.items, image_context.geometry);
+            return;
+        }
         if (!large and source.items.len + n <= max_pretty) {
             try source.appendSlice(a, chunk[0..n]);
         } else {
@@ -144,15 +171,46 @@ fn process(a: std.mem.Allocator, io: std.Io, file: std.Io.File, sink: *Sink, pat
         if (pretty) try safe_stream.finish();
         return;
     }
+    if (image.signature(source.items)) {
+        if (!image_context.enabled) return error.ImageProtocolUnavailable;
+        try image.render(a, sink.out, source.items, image_context.geometry);
+        return;
+    }
+    const lang = opts.language orelse options.detect(path, source.items);
+    const code = !opts.markdown and !std.mem.eql(u8, lang, "markdown") and !std.mem.eql(u8, lang, "text");
+    if (code and !opts.no_header) {
+        if (!sink.line_start) {
+            try sink.out.writeByte('\n');
+            if (opts.number) sink.line +|= 1;
+        }
+        sink.line_start = true;
+        if (color) try sink.out.writeAll("\x1b[1;36m");
+        try sink.out.writeAll("── ");
+        try terminal.safe(sink.out, if (std.mem.eql(u8, path, "-")) "stdin" else path);
+        try sink.out.print(" [{s}] ──\n", .{lang});
+        if (color) try sink.out.writeAll(terminal.reset);
+    }
+    const auto_number = code and !opts.number and !opts.no_line_numbers;
+    if (auto_number) {
+        sink.number = true;
+        sink.line = 1;
+        sink.line_start = true;
+    }
+    defer if (auto_number) {
+        sink.number = false;
+        sink.line_start = true;
+    };
     const rendered = &sink.writer;
     if (!terminal.validText(source.items)) {
         try terminal.safe(rendered, source.items);
     } else {
-        const lang = opts.language orelse options.detect(path, source.items);
         if (opts.markdown or std.mem.eql(u8, lang, "markdown")) {
-            try markdown.render(a, io, rendered, source.items, color, opts.width);
+            var context = image_context;
+            context.document = path;
+            try markdown.renderImages(a, io, rendered, source.items, color, opts.width -| @as(usize, if (opts.number) 8 else 0), context);
         } else try highlight.render(a, io, rendered, source.items, lang, color);
     }
+    if (auto_number and !sink.line_start) try sink.out.writeByte('\n');
 }
 
 test "numbering continues over chunks without a phantom final line" {

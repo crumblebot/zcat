@@ -48,27 +48,5 @@ jobs:
       - name: Uninstall the formula
         if: always() && steps.install.outcome == 'success'
         run: brew uninstall crumblebot/zcat/zcat
-      - name: Verify migration from the frozen tap
-        shell: bash
-        run: |
-          set -euo pipefail
-          brew untap crumblebot/zcat
-          brew tap crumblebot/tap
-          brew install crumblebot/tap/zcat
-          # These are the documented migration commands, not a forced untap.
-          brew uninstall crumblebot/tap/zcat
-          brew tap crumblebot/zcat https://github.com/crumblebot/zcat
-          brew install crumblebot/zcat/zcat
-          zc --version
-          # Uninstall revokes formula-specific trust in current Homebrew.
-          brew trust --formula crumblebot/tap/zcat
-          brew untap crumblebot/tap
-          brew test crumblebot/zcat/zcat
-          brew info --json=v2 crumblebot/zcat/zcat > "$RUNNER_TEMP/zcat-info.json"
-          python3 -c 'import json, sys; f = json.load(open(sys.argv[1]))["formulae"][0]; assert f["tap"] == "crumblebot/zcat"; assert f["installed"]; assert all(i["installed_on_request"] for i in f["installed"])' "$RUNNER_TEMP/zcat-info.json"
-      - name: Clean up migration installation
-        if: always() && steps.install.outcome == 'success'
-        run: |
-          if brew list --formula --full-name | grep -qx crumblebot/zcat/zcat; then
-            brew uninstall crumblebot/zcat/zcat
-          fi
+      # The former crumblebot/homebrew-tap repository was deleted. Existing
+      # local taps can migrate using README instructions; CI must not clone it.

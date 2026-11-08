@@ -1,6 +1,6 @@
 # zcat
 
-A terminal-aware `cat` alternative written in Zig. Read source files with Tree-sitter syntax highlighting, or render Markdown in your terminal.
+A terminal-aware `cat` alternative written in Zig. Read highlighted code with file headers and line numbers, render Markdown, or display PNG and JPEG images with Kitty graphics.
 
 The project is named **zcat**; its executable is **`zc`**. It doesn't decompress files or replace gzip's `zcat` command.
 
@@ -51,8 +51,8 @@ Don't force the untap if Homebrew reports other installed formulas. Use the full
 
 Update `Formula/zcat.rb` in this repository after publishing a release. Verify each archive against the release's `SHA256SUMS`, then update the URLs and hashes. Don't replace existing release tags or assets.
 
-The old tap's formula stays frozen for compatibility; this repository is the only maintained source.
-The [Homebrew workflow](.github/workflows/homebrew.yml) checks explicit-URL installation, formula tests, style, strict audit, migration, and uninstall on Linux x86-64 and both Mac architectures.
+The old `crumblebot/homebrew-tap` repository has been deleted. Migration works from an existing local tap; don't try to install or clone it again. This repository is the only maintained formula source.
+The [Homebrew workflow](.github/workflows/homebrew.yml) checks explicit-URL installation, formula tests, style, strict audit, and uninstall on Linux x86-64 and both Mac architectures.
 
 ## Build from source
 
@@ -67,7 +67,7 @@ zig build -Doptimize=ReleaseSafe -j2
 ./zig-out/bin/zc --help
 ```
 
-The executable is `zig-out/bin/zc`. Grammars and the Tree-sitter runtime compile into the binary; no system Tree-sitter installation is required. The dependency commit and package hash are pinned in `build.zig.zon`. Transitive grammar revisions and hashes are pinned by ztreesitter.
+The executable is `zig-out/bin/zc`. Grammars, the image decoder, and the Tree-sitter runtime compile into the binary; no system Tree-sitter installation is required. The dependency commit and package hash are pinned in `build.zig.zon`. Transitive grammar revisions and hashes are pinned by ztreesitter.
 
 Optionally install `zc` in your local binary directory:
 
@@ -99,7 +99,7 @@ printf 'stdin\n' | zc first.txt - second.txt
 zc -- -dash-prefixed-file
 ```
 
-No filenames means stdin. Each `-` reads stdin at its current position; after EOF, subsequent `-` operands contribute no bytes. Files are processed in order, without banners or separators.
+No filenames means stdin. Each `-` reads stdin at its current position; after EOF, subsequent `-` operands contribute no bytes. Raw and redirected files are processed in order, without banners or separators.
 
 Force highlighting in a redirected output, or render Markdown without ANSI colors:
 
@@ -117,6 +117,61 @@ zc --plain data.bin > copy.bin
 
 **Security:** Pretty output escapes input terminal controls, including ESC, OSC sequences, C1 controls, and bidirectional overrides. It never opens URLs or emits OSC hyperlinks. Raw output deliberately preserves all input bytes, including control sequences. Don't use `--plain` to inspect untrusted files directly in a terminal. Normal redirected output also preserves any ANSI sequences already present in the input; it adds none.
 
+## Code headers and line numbers
+
+Pretty output for recognized source languages includes an escaped filename, language, and per-file line numbers. Stdin uses the label `stdin`. Markdown fences don't receive file headers or automatic numbers. Plain text doesn't receive decorations.
+
+Disable either decoration independently:
+
+```sh
+zc --no-header src/main.zig
+zc --no-line-numbers src/main.zig
+zc --no-header --no-line-numbers --color=always src/main.zig
+```
+
+`-n` keeps explicit continuous numbering across files, including raw pipes. Headers aren't numbered. In pretty code output, a header starts on a new line, even if the previous file has no final newline. Automatic per-file numbering also finishes an unterminated final line. `--plain` disables all automatic decorations. Default redirected output remains byte-for-byte unchanged.
+
+Number prefixes occupy at least eight cells. Source lines aren't wrapped or truncated, so long code lines can exceed the terminal width. With explicit `-n`, Markdown reserves eight cells from its layout width.
+
+## Display images
+
+In Ghostty, run:
+
+```sh
+zc photo.png
+zc photo.jpg
+zc README.md
+```
+
+`zc` transmits decoded RGBA pixels directly through the [Kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/). It doesn't run shell tools or open image viewers. PNG and JPEG are supported, including local Markdown images in prose:
+
+```markdown
+![Screenshot](images/screenshot.png)
+![A filename with spaces](images/screen%20shot.jpg)
+![Another filename with spaces](<images/screen shot.png>)
+```
+
+Relative paths resolve against the Markdown file's directory; stdin resolves against the working directory. Absolute local paths are allowed. Percent escapes decode once. URL schemes, network paths, query strings, fragments, and control bytes are rejected. Remote images receive a textual diagnostic; they aren't fetched. Local image errors identify the input document on stderr and stop that document, but later file operands still run. Only open trusted Markdown: local image references can read files accessible to your user, including paths outside the document directory.
+
+Images use separate display rows with escaped alt text. Fenced code, inline code, and table cells don't display embedded images. Reference-style images, optional titles, and destinations containing literal parentheses aren't implemented. Encode parentheses as `%28` and `%29`. GIF, WebP, BMP, TIFF, and AVIF aren't supported; there is no ASCII, colored-block, Sixel, or external-viewer fallback.
+
+### Terminal support
+
+[Ghostty's official feature documentation](https://ghostty.org/docs/features) explicitly lists Kitty graphics support. Automatic image output requires a TTY with `TERM=xterm-ghostty`, `TERM=xterm-kitty`, or `TERM_PROGRAM=ghostty`. These markers aren't a protocol handshake. Multiplexer passthrough isn't implemented.
+
+Rex's [official installation documentation](https://www.superlogical.com/rex/docs/installation) lists a macOS client and Linux/FreeBSD servers. Its [public documentation index](https://www.superlogical.com/rex/docs/llms.txt) doesn't establish Kitty or Sixel graphics support. Rex compatibility is **unverified**, and Rex isn't automatically enabled. If your Rex version supports Kitty graphics, explicitly opt in:
+
+```sh
+zc --images=kitty photo.png
+zc --images=kitty README.md
+```
+
+`--images=kitty` trusts your terminal choice and can emit protocol escapes into redirected output. It also enables pretty processing for stdin. `--images=never` disables graphics; pretty local-image requests then fail with `ImageProtocolUnavailable`. Use `--plain` for original bytes instead. Unsupported or unrecognized terminals receive the same diagnostic in pretty mode. There are no terminal queries or waits for terminal replies, even with piped stdin.
+
+Image dimensions fit within the terminal's columns and available rows without upscaling. The renderer uses the window-size ioctl for cell geometry, with an 8 × 16 pixel estimate when pixel dimensions aren't available. Without a reported grid, it uses configured width and 24 rows. It preserves aspect ratio, caps placement at 240 columns and 100 rows, and reserves one reported terminal row. Nearest-neighbor downsampling can reduce image quality. Already printed images don't reflow after resizing.
+
+No native Ghostty or Rex client was available in the Linux development environment. Protocol and PTY tests verify transmitted bytes and sizing, not visual appearance in those clients. See [image verification](IMAGE_VERIFICATION.md).
+
 ## Options
 
 | Option | Behavior |
@@ -127,8 +182,11 @@ zc --plain data.bin > copy.bin
 | `-l NAME`, `--language NAME`, `--language=NAME` | Override extension and shebang detection. |
 | `-m`, `--markdown` | Render Markdown even when output is redirected. |
 | `-n`, `--number` | Number output lines continuously across files. Number rendered lines in pretty mode. |
-| `--plain`, `--raw` | Stream exact bytes; override color and language options. Can't combine with Markdown or numbering. |
-| `--width N` | Set Markdown prose, table, and rule width to 20–240 cells. |
+| `--no-header` | Hide the automatic pretty-code filename and language header. |
+| `--no-line-numbers` | Disable automatic code numbering; can't combine with `-n`. |
+| `--images=auto\|kitty\|never` | Detect Ghostty/Kitty TTYs, explicitly emit Kitty graphics, or disable images. |
+| `--plain`, `--raw` | Stream exact bytes; override color and language options. Can't combine with Markdown, explicit numbering, or `--images=kitty`. |
+| `--width N` | Set Markdown layout and maximum image width to 20–240 cells. |
 | `--list-languages` | List canonical language names. |
 | `-h`, `--help` | Show help. |
 | `-V`, `--version` | Show version. |
@@ -174,7 +232,7 @@ The native terminal renderer supports:
 
 Tables keep column boundaries aligned, excluding ANSI styling from width calculations. Long words and cell contents wrap within `--width`. When columns can't fit with three content cells each, rows use stacked header/value pairs. Escape literal pipes as `\|`; pipes inside matched backtick spans don't split cells. Missing cells are empty; extra cells are ignored. Tables end at blank lines, non-pipe prose, headings, lists, quotes, or fences. Rows longer than 16 KiB or wider than 32 columns remain ordinary text.
 
-This is **not a CommonMark implementation**. HTML, images, reference links, nested list layout, task checkboxes, setext headings, multi-backtick inline code styling, and full delimiter-flanking rules aren't implemented. Nested inline styles can lose outer ANSI styling after an inner reset. Unknown constructs remain readable text rather than receiving full Markdown semantics.
+This is **not a CommonMark implementation**. HTML, reference links, nested list layout, task checkboxes, setext headings, multi-backtick inline code styling, and full delimiter-flanking rules aren't implemented. Nested inline styles can lose outer ANSI styling after an inner reset. Unknown constructs remain readable text rather than receiving full Markdown semantics.
 
 Prose wraps to the configured width; code blocks preserve source lines and don't wrap internally. Cell widths approximate combining marks and East Asian characters, not complete grapheme shaping. Emoji sequences and terminal-specific ambiguous widths can differ. Escaped controls can exceed the nominal width. Lists and quotes use flat prefixes without hanging indentation. Resizing a terminal doesn't reflow already printed text.
 
@@ -182,7 +240,9 @@ Prose wraps to the configured width; code blocks preserve source lines and don't
 
 Normal cat mode streams with bounded buffers and preserves arbitrary bytes, including invalid UTF-8 and NUL. Number-only pipe output also streams.
 
-Pretty mode buffers up to **8 MiB per input** for parsing. Larger inputs fall back to streaming, control-escaped text without highlighting or Markdown conversion. Invalid UTF-8 or NUL-containing inputs also use control-escaped text in pretty mode. Incomplete or invalid UTF-8 bytes appear as `\xNN`. The large-input fallback preserves valid UTF-8 across chunk boundaries.
+Images allow at most **16 MiB encoded**, **8192 pixels per axis**, and **16,777,216 decoded pixels**. The decoder has a **128 MiB allocation budget**, including intermediates. Decoder failures and budget exhaustion report `InvalidImage`; input-limit errors can report `StreamTooLong`. RGBA resampling adds at most 64 MiB. Kitty payload chunks contain at most 4096 base64 bytes, and quiet mode suppresses terminal replies.
+
+Pretty text mode buffers up to **8 MiB per input** for parsing. Larger text inputs fall back to streaming, control-escaped text without highlighting, headers, automatic numbering, or Markdown conversion. Invalid UTF-8 or NUL-containing inputs also use control-escaped text in pretty mode. Incomplete or invalid UTF-8 bytes appear as `\xNN`. The large-input fallback preserves valid UTF-8 across chunk boundaries.
 
 Inline Markdown spans longer than 16 KiB remain literal text to bound delimiter-search work. Inline nesting stops after eight levels. Highlighting doesn't perform semantic analysis, language injections, or theme customization. Parse trees and queries add memory beyond the input buffer; the cap isn't a total memory limit.
 

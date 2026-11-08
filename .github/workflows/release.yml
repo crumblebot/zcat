@@ -53,7 +53,7 @@ jobs:
           name="zcat-$version-${{ matrix.platform }}"
           mkdir -p "$name/bin"
           cp zig-out/bin/zc "$name/bin/"
-          cp LICENSE THIRD_PARTY.md README.md "$name/"
+          cp LICENSE THIRD_PARTY.md README.md IMAGE_VERIFICATION.md "$name/"
           cp -R licenses "$name/"
           tar -czf "$name.tar.gz" "$name"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

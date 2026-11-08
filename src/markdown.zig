@@ -2,12 +2,15 @@ const std = @import("std");
 const terminal = @import("terminal.zig");
 const highlight = @import("highlight.zig");
 const options = @import("options.zig");
+const image = @import("image.zig");
+const Images = struct { a: std.mem.Allocator, io: std.Io, context: image.Context };
 
 const Inline = struct {
     out: *std.Io.Writer,
     color: bool,
     width: usize,
     column: usize = 0,
+    images: ?Images = null,
 
     fn styled(self: *Inline, code: []const u8) !void {
         if (self.color) try self.out.writeAll(code);
@@ -51,12 +54,45 @@ const Inline = struct {
         var i: usize = 0;
         var start: usize = 0;
         while (i < text.len) {
-            if (text[i] == '\\' and i + 1 < text.len and std.mem.indexOfScalar(u8, "\\`*_[]()|", text[i + 1]) != null) {
+            if (text[i] == '\\' and i + 1 < text.len and std.mem.indexOfScalar(u8, "\\`*_[]()|!", text[i + 1]) != null) {
                 try self.emit(text[start..i]);
                 try self.emit(text[i + 1 .. i + 2]);
                 i += 2;
                 start = i;
                 continue;
+            }
+            if (self.images != null and text[i] == '!' and i + 1 < text.len and text[i + 1] == '[') {
+                if (std.mem.indexOf(u8, text[i + 2 ..], "](")) |middle| {
+                    const alt_end = i + 2 + middle;
+                    const url_start = alt_end + 2;
+                    if (std.mem.indexOfScalarPos(u8, text, url_start, ')')) |end| {
+                        try self.emit(text[start..i]);
+                        if (self.column != 0) try self.out.writeByte('\n');
+                        self.column = 0;
+                        try self.emit("[image: ");
+                        try self.emit(text[i + 2 .. alt_end]);
+                        try self.emit("]");
+                        try self.out.writeByte('\n');
+                        self.column = 0;
+                        const imgs = self.images;
+                        if (imgs) |ctx| {
+                            var url = std.mem.trim(u8, text[url_start..end], " ");
+                            if (url.len >= 2 and url[0] == '<' and url[url.len - 1] == '>') url = url[1 .. url.len - 1];
+                            const path = image.localPath(ctx.a, ctx.context.document, url) catch |err| {
+                                try self.out.print("[{s}; local images only]\n", .{@errorName(err)});
+                                i = end + 1;
+                                start = i;
+                                continue;
+                            };
+                            defer ctx.a.free(path);
+                            if (!ctx.context.enabled) return error.ImageProtocolUnavailable;
+                            try image.file(ctx.a, ctx.io, ctx.context.graphics_out orelse self.out, path, ctx.context.geometry);
+                        } else return error.ImageProtocolUnavailable;
+                        i = end + 1;
+                        start = i;
+                        continue;
+                    }
+                }
             }
             if (text[i] == '[') {
                 if (std.mem.indexOf(u8, text[i..], "](")) |middle| {
@@ -348,9 +384,13 @@ fn renderTable(a: std.mem.Allocator, out: *std.Io.Writer, source: []const u8, he
 }
 
 pub fn render(a: std.mem.Allocator, io: std.Io, out: *std.Io.Writer, source: []const u8, color: bool, width: usize) !void {
+    return renderImages(a, io, out, source, color, width, .{});
+}
+
+pub fn renderImages(a: std.mem.Allocator, io: std.Io, out: *std.Io.Writer, source: []const u8, color: bool, width: usize, context: image.Context) !void {
     var pos: usize = 0;
     var paragraph = false;
-    var inline_out: Inline = .{ .out = out, .color = color, .width = width };
+    var inline_out: Inline = .{ .out = out, .color = color, .width = width, .images = .{ .a = a, .io = io, .context = context } };
     while (pos < source.len) {
         const current = lineAt(source, pos);
         pos = current.next;

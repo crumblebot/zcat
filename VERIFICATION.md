@@ -2,6 +2,10 @@
 
 Verified with the official Zig 0.17.1 compiler on Linux x86-64. The downloaded compiler archive matched SHA-256 `3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a`.
 
+## Version 0.2.0 images and code decorations
+
+See [image and code decoration verification](IMAGE_VERIFICATION.md) for protocol sources, exact local test counts, cross-builds, and the absence of native Ghostty/Rex visual verification. This version retains byte-preserving default redirected output.
+
 ## Version 0.1.2 executable rename
 
 The project and release archives remain named `zcat`; the installed executable is `zc`.

@@ -7,6 +7,17 @@ zcat's own code uses the MIT license in `LICENSE`. Dependency licenses remain in
 - [ztreesitter](https://github.com/pedronaugusto/ztreesitter/tree/6c1d940007c77f11d8f4775ca2fc558b404b84d9), commit `6c1d940007c77f11d8f4775ca2fc558b404b84d9`: MIT. See `licenses/ztreesitter-MIT.txt`.
 - Tree-sitter's runtime is vendored by that ztreesitter revision in `libs/tree-sitter/`: MIT. See `licenses/tree-sitter-MIT.txt`. The exact runtime source and provenance are available in [ztreesitter's upstream record](https://github.com/pedronaugusto/ztreesitter/blob/6c1d940007c77f11d8f4775ca2fc558b404b84d9/UPSTREAM.md).
 
+## Image decoder
+
+[stb_image](https://github.com/nothings/stb/blob/4e9b368bfc071e97206ea5c6adba68dd0cbf8897/stb_image.h), commit `4e9b368bfc071e97206ea5c6adba68dd0cbf8897`, is vendored unchanged in `src/vendor/stb_image.h`. Only PNG and JPEG decoders are compiled. zcat uses the MIT option of its dual MIT/public-domain license. The exact upstream license text is retained in `licenses/stb.txt`; the header also retains the implementation's notices.
+
+SHA-256:
+
+- `src/vendor/stb_image.h`: `594c2fe35d49488b4382dbfaec8f98366defca819d916ac95becf3e75f4200b3`
+- `licenses/stb.txt`: `bebfe904b14301657e4e5d655c811d51fd31b97c455b9cc2d8600d6bac6cff63`
+
+`src/image_decode.c` adds a bounded allocator and a window-size ioctl wrapper. It doesn't modify the vendored header. `tests/fixtures/red.jpg` is a generated 2 × 1 red JPEG fixture, not an upstream image.
+
 ## Grammar sources
 
 All linked grammars use MIT licenses. License files are copied from the exact grammar packages fetched by the pinned ztreesitter manifest. TSX and TypeScript share a repository, revision, and license.

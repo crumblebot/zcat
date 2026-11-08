@@ -1,7 +1,7 @@
 const std = @import("std");
 
 pub const help =
-    \\zc 0.1.2 — a terminal-aware cat (zcat project)
+    \\zc 0.2.0 — a terminal-aware cat (zcat project)
     \\
     \\Usage: zc [OPTIONS] [FILE ...]
     \\Read FILEs in order; '-' or no files reads stdin. Use '--' before dash-prefixed names.
@@ -10,15 +10,18 @@ pub const help =
     \\  -l, --language NAME       Override detection; use 'text' to disable highlighting
     \\  -m, --markdown            Render Markdown, even when stdout is redirected
     \\  -n, --number              Number output lines (continuous across files)
-    \\  --plain, --raw            Byte-preserving streaming output; excludes -m and -n
-    \\  --width N                Markdown width, 20–240 (default: COLUMNS or 80)
+    \\  --no-header              Hide pretty code filename/language header
+    \\  --no-line-numbers        Disable automatic per-file code numbering
+    \\  --images=auto|kitty|never Local PNG/JPEG graphics (auto: Ghostty/Kitty TTY)
+    \\  --plain, --raw            Exact bytes; excludes -m, -n, and --images=kitty
+    \\  --width N                Markdown/image width, 20–240 (default: COLUMNS or 80)
     \\  --list-languages         Print supported language names
     \\  -h, --help               Print this help
     \\  -V, --version            Print version
     \\
     \\Languages: zig, javascript/js, typescript/ts, tsx/jsx, python/py, json,
     \\           bash/sh, c, rust/rs, markdown/md, text/plain
-    \\Terminals render detected Markdown and highlight known source files automatically.
+    \\Terminals render Markdown and show highlighted code with headers and line numbers.
     \\Pipes default to exact bytes. --color=always explicitly enables pretty source output.
     \\Pretty output escapes terminal controls; --plain does not. No pager is launched.
     \\
@@ -30,6 +33,9 @@ pub const Options = struct {
     language: ?[]const u8 = null,
     markdown: bool = false,
     number: bool = false,
+    no_line_numbers: bool = false,
+    no_header: bool = false,
+    images: enum { auto, kitty, never } = .auto,
     plain: bool = false,
     width: usize = 80,
     width_set: bool = false,
@@ -62,6 +68,12 @@ pub fn parse(a: std.mem.Allocator, args: []const []const u8) !Options {
             result.plain = true;
         } else if (std.mem.eql(u8, arg, "--number") or std.mem.eql(u8, arg, "-n")) {
             result.number = true;
+        } else if (std.mem.eql(u8, arg, "--no-line-numbers")) {
+            result.no_line_numbers = true;
+        } else if (std.mem.eql(u8, arg, "--no-header")) {
+            result.no_header = true;
+        } else if (std.mem.startsWith(u8, arg, "--images=")) {
+            result.images = std.meta.stringToEnum(@TypeOf(result.images), arg[9..]) orelse return error.InvalidImages;
         } else if (std.mem.eql(u8, arg, "--markdown") or std.mem.eql(u8, arg, "-m")) {
             result.markdown = true;
         } else if (std.mem.startsWith(u8, arg, "--color=")) {
@@ -80,7 +92,8 @@ pub fn parse(a: std.mem.Allocator, args: []const []const u8) !Options {
             if (result.width < 20 or result.width > 240) return error.InvalidWidth;
         } else return error.UnknownOption;
     }
-    if (result.plain and (result.markdown or result.number)) return error.ConflictingOptions;
+    if (result.number and result.no_line_numbers) return error.ConflictingOptions;
+    if (result.plain and (result.markdown or result.number or result.images == .kitty)) return error.ConflictingOptions;
     return result;
 }
 

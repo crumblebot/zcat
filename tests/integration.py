@@ -57,7 +57,7 @@ def terminal(*args, data=b"", env=ENV):
 class Cli(unittest.TestCase):
     def test_help_version_errors(self):
         self.assertIn(b"Usage: zc [OPTIONS] [FILE ...]", run("--help").stdout)
-        self.assertEqual(run("--version").stdout, b"zc 0.1.2\n")
+        self.assertEqual(run("--version").stdout, b"zc 0.2.0\n")
         self.assertIn(b"typescript", run("--list-languages").stdout)
         for args in [("--bogus",), ("--color=bogus",), ("-l",),
                      ("-l", "unknown"), ("--width", "19"),
@@ -208,7 +208,7 @@ class Cli(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as tmp:
             for ext, source in samples.items():
-                result = run("--color=always", "-l", ext, data=source)
+                result = run("--color=always", "--no-header", "--no-line-numbers", "-l", ext, data=source)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn(b"\x1b[", result.stdout, ext)
                 self.assertEqual(ANSI.sub(b"", result.stdout), source, ext)
@@ -219,6 +219,29 @@ class Cli(unittest.TestCase):
         source = b"#!/usr/bin/env python3\nprint('hi')\n"
         self.assertIn(b"\x1b[", run("--color=always", data=source).stdout)
         self.assertNotIn(b"\x1b", run("--color=always", "-l", "text", data=b"42").stdout)
+
+    def test_code_decorations(self):
+        source = b"const x = 42;\nconst y = 0;"
+        text = ANSI.sub(b"", terminal("-l", "zig", data=source))
+        self.assertIn(b"stdin [zig]", text)
+        self.assertIn(b"     1  const x", text)
+        self.assertIn(b"     2  const y", text)
+        self.assertEqual(ANSI.sub(b"", terminal("--no-header", "--no-line-numbers", "-l", "zig", data=source)), source)
+        self.assertNotIn(b"stdin", terminal("--no-header", "-l", "zig", data=source))
+        self.assertNotIn(b"     1", terminal("--no-line-numbers", "-l", "zig", data=source))
+        self.assertEqual(run("-l", "zig", data=source).stdout, source)
+        self.assertEqual(run("-n", "--no-line-numbers").returncode, 2)
+        with tempfile.TemporaryDirectory() as tmp:
+            names = [str(Path(tmp, "a.zig")), str(Path(tmp, "b\x1b[2J.zig"))]
+            for name in names:
+                Path(name).write_bytes(source)
+            text = ANSI.sub(b"", terminal(*names))
+            self.assertEqual(text.count(b"     1  const x"), 2)
+            self.assertIn(b"b\\x1b[2J.zig", text)
+            self.assertNotIn(b"\x1b", text)
+            self.assertEqual(run(*names).stdout, source * 2)
+            text = ANSI.sub(b"", terminal("-n", *names))
+            self.assertIn(b"     3  const x", text)
 
     def test_terminal_policies(self):
         data = b"const x = 42;\n"
